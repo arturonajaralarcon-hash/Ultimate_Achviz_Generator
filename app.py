@@ -7,7 +7,7 @@ import json
 import os
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Image Gen DeMos", layout="wide", page_icon="🏗️")
+st.set_page_config(page_title="Generador de imagen DeMos", layout="wide", page_icon="😸")
 
 # --- CARGADOR DE DATOS JSON ---
 @st.cache_data
@@ -62,7 +62,7 @@ if check_password():
     client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
 
     # --- ENCABEZADO ---
-    st.title("Image Gen DeMos 🏗️")
+    st.title("Generador de Imagen DeMos")
     st.caption("ArchViz Specialized | Nano Banana Series")
 
     # --- TEXTO DE BIENVENIDA / TUTORIAL ---
@@ -123,7 +123,7 @@ if check_password():
     with c_controls_2:
         st.write("") 
         st.write("") 
-        if st.button("Recargar JSONs 🔄", use_container_width=True):
+        if st.button("Recargar JSONs", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
             
@@ -131,8 +131,8 @@ if check_password():
         pass
 
     # --- ZONA 1: REFERENCIAS ---
-    st.subheader("1. Contexto Visual (Referencias)")
-    uploaded_files = st.file_uploader("Sube planos o referencias de estilo", 
+    st.subheader("1. Imagenes de referencia")
+    uploaded_files = st.file_uploader("Sube fotos a editar o referencias de estilo", 
                                      type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     
     if uploaded_files:
@@ -156,16 +156,16 @@ if check_password():
     st.divider()
 
 # --- ZONA 2: ULTIMATE PROMPT ENGINE (VERTICAL) ---
-    st.subheader("2. Composición de Prompt")
+    st.subheader("2. Generador de Prompt")
     
     # 2.1 Entrada
-    st.markdown("**Entrada de Comandos**")
-    cmd_input = st.text_area("Escribe tu comando (ej: 'Architectural Recipe: Museo moderno' o 'Improve: casa de playa')", height=100)
+    st.markdown("**Prompt inicial**")
+    cmd_input = st.text_area("Escribe tu prompt (ej: 'Architectural: Museo moderno' o 'Improve: casa de playa')", height=100)
     
     # 2.2 Botón de Acción
-    if st.button("Ejecutar PromptAssistantGEM 🪄", type="primary", use_container_width=True):
+    if st.button("Mejorar Prompt", type="primary", use_container_width=True):
         if cmd_input:
-            with st.spinner("Aplicando recetas y estilos JSON..."):
+            with st.spinner("Mejorando Prompt..."):
                 try:
                     # Preparamos contexto
                     json_context = json.dumps(st.session_state.json_data, indent=2, ensure_ascii=False) if st.session_state.json_data else "No JSON data."
@@ -233,7 +233,7 @@ if check_password():
     # --- ZONA 3: GENERACIÓN DE IMAGEN ---
     st.divider()
     
-    if st.button("Generar Render Final ✨", use_container_width=True):
+    if st.button("Crear Imagen", use_container_width=True):
         if st.session_state.prompt_final:
             with st.status("Renderizando...", expanded=False) as status:
                 try:
