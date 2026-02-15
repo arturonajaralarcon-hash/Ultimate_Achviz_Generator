@@ -1,0 +1,42 @@
+{
+  "prompt": {
+    "main_subject": "",
+    "action": "",
+    "environment": "",
+    "mood": "",
+    "art_style": [],
+    "camera_settings": {"shot_type": "", "lens": "", "depth_of_field": ""},
+    "lighting": {"type": [], "direction": "", "intensity": ""},
+    "colors": {"palette": [], "dominant_colors": []},
+    "texture_materials": [],
+    "additional_details": []
+  },
+  "parameters": {
+    "aspect_ratio": "1:1",
+    "chaos": 0,
+    "stylize": 100,
+    "quality": 1,
+    "version": "7",
+    "seed": null,
+    "weird": 0,
+    "stop": 100,
+    "tile": false,
+    "no": [],
+    "image_weight": 1,
+    "style_reference": "",
+    "style_weight": 100,
+    "character_reference": "",
+    "character_weight": 100,
+    "exp": 0,
+    "raw": false,
+    "turbo": false,
+    "fast": false,
+    "relax": false,
+    "repeat": 1,
+    "omni_reference": ""
+  },
+  "prompt_weights": {
+    "use_weights": false,
+    "weighted_elements": []
+  }
+}
