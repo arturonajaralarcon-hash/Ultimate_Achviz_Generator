@@ -9,6 +9,18 @@ import os
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Generador de imagen DeMos", layout="wide", page_icon="😸")
 
+# --- FUNCIONES DE UTILIDAD (UPSCALING) ---
+def upscale_image(image, target_width=3840): # 3840px es el ancho estándar de 4K
+    """
+    Reescala una imagen PIL usando el filtro LANCZOS (alta calidad)
+    manteniendo la relación de aspecto.
+    """
+    w_percent = (target_width / float(image.size[0]))
+    h_size = int((float(image.size[1]) * float(w_percent)))
+    # LANCZOS es el mejor filtro para downscaling/upscaling fotográfico
+    img_resized = image.resize((target_width, h_size), PIL.Image.Resampling.LANCZOS)
+    return img_resized
+
 # --- CARGADOR DE DATOS JSON ---
 @st.cache_data
 def load_json_data(folder_path="data"):
@@ -41,9 +53,17 @@ if "json_data" not in st.session_state:
     data, msg = load_json_data()
     st.session_state.json_data = data
     st.session_state.json_msg = msg
+if "ultima_generacion" not in st.session_state:
+    st.session_state.ultima_generacion = None
 
 # --- SEGURIDAD ---
-PASSWORD_ACCESO = "archviz2026"
+# Intentamos obtener la contraseña de los secrets, si no, usamos un fallback seguro o error
+try:
+    PASSWORD_ACCESO = st.secrets["PASSWORD_ACCESO"]
+except Exception:
+    # Fallback solo para desarrollo local si no se ha configurado secrets
+    st.warning("⚠️ No se encontró 'PASSWORD_ACCESO' en secrets.toml. Usando valor por defecto para desarrollo.")
+    PASSWORD_ACCESO = "admin" 
 
 def check_password():
     if "authenticated" not in st.session_state:
@@ -155,7 +175,7 @@ if check_password():
 
     st.divider()
 
-# --- ZONA 2: ULTIMATE PROMPT ENGINE (VERTICAL) ---
+    # --- ZONA 2: ULTIMATE PROMPT ENGINE (VERTICAL) ---
     st.subheader("2. Generador de Prompt")
     
     # 2.1 Entrada
@@ -201,11 +221,10 @@ if check_password():
                         # 1. Actualizamos la variable maestra
                         st.session_state.prompt_final = texto_limpio
                         
-                        # 2. !!! ESTA ES LA SOLUCIÓN !!!
-                        # Forzamos la actualización directa de la memoria del widget "fp_area"
+                        # 2. Forzamos la actualización del widget
                         st.session_state["fp_area"] = texto_limpio
                         
-                        # 3. Recargamos para que el cambio se vea inmediatamente
+                        # 3. Recargamos
                         st.rerun()
                     else:
                         st.error("El modelo devolvió una respuesta vacía.")
@@ -225,11 +244,12 @@ if check_password():
     final_prompt = st.text_area("Resultado optimizado:", 
                               value=st.session_state.prompt_final, 
                               height=150, 
-                              key="fp_area") # La clave 'fp_area' ahora ya tiene el valor inyectado
+                              key="fp_area")
     
-    # Sincronización inversa: Si el usuario edita a mano, actualizamos el estado
+    # Sincronización inversa
     if final_prompt != st.session_state.prompt_final:
         st.session_state.prompt_final = final_prompt
+
     # --- ZONA 3: GENERACIÓN DE IMAGEN ---
     st.divider()
     
@@ -256,13 +276,16 @@ if check_password():
                                 break
                         
                         if img_result:
+                            # Guardar en historial
                             st.session_state.historial.insert(0, img_result)
                             if len(st.session_state.historial) > 10:
                                 st.session_state.historial.pop()
                             
-                            st.subheader("Resultado")
-                            st.image(img_result, use_container_width=True, caption="Render DeMos")
+                            # Guardar como última generación para las opciones de post-procesado
+                            st.session_state.ultima_generacion = img_result
+                            
                             status.update(label="Renderizado completo", state="complete")
+                            st.rerun() # Recargar para mostrar la imagen y opciones nuevas
                         else:
                             st.error("No se generó imagen (Posible filtro de seguridad).")
                     else:
@@ -272,6 +295,51 @@ if check_password():
                     st.error(f"Error crítico: {e}")
         else:
             st.warning("El campo de prompt final está vacío.")
+
+    # --- ZONA 4: RESULTADO Y OPCIONES POST-GENERACIÓN ---
+    if st.session_state.ultima_generacion:
+        st.subheader("Resultado Actual")
+        st.image(st.session_state.ultima_generacion, use_container_width=True, caption="Generación Más Reciente")
+        
+        col_ops1, col_ops2 = st.columns(2)
+        
+        with col_ops1:
+            # Opción 1: Reescalar a 4K
+            if st.button("🖼️ Reescalar a 4K (Descargar)"):
+                with st.spinner("Reescalando imagen a 4K con algoritmo Lanczos..."):
+                    img_4k = upscale_image(st.session_state.ultima_generacion)
+                    
+                    # Preparar buffer para descarga
+                    buf_4k = BytesIO()
+                    img_4k.save(buf_4k, format="PNG", optimize=True) # Optimize ayuda a reducir un poco el peso
+                    byte_im_4k = buf_4k.getvalue()
+                    
+                    # Verificar peso (referencia visual, no bloqueante para descarga)
+                    size_mb = len(byte_im_4k) / (1024 * 1024)
+                    st.success(f"Imagen lista: 4K ({img_4k.size[0]}x{img_4k.size[1]} px) - {size_mb:.2f} MB")
+                    
+                    st.download_button(
+                        label="⬇️ Descargar Imagen 4K",
+                        data=byte_im_4k,
+                        file_name="demos_render_4k.png",
+                        mime="image/png"
+                    )
+
+        with col_ops2:
+            # Opción 2: Mover a Referencias
+            if st.button("🔄 Usar como Referencia"):
+                # Crear nombre único
+                import time
+                new_name = f"gen_ref_{int(time.time())}.png"
+                
+                # Añadir a la lista de referencias
+                st.session_state.referencias.append({
+                    "img": st.session_state.ultima_generacion,
+                    "name": new_name
+                })
+                st.success("Imagen añadida a la Biblioteca de Referencias (Zona 1).")
+                time.sleep(1) # Breve pausa para leer el mensaje
+                st.rerun()
 
     # --- HISTORIAL ---
     if st.session_state.historial:
