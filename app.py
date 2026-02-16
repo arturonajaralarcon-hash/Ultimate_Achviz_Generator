@@ -125,14 +125,16 @@ if check_password():
     # --- CONTROLES SUPERIORES ---
     c_controls_1, c_controls_2, c_controls_3 = st.columns([2, 1, 1])
     
-    with c_controls_1:
+with c_controls_1:
         modelo_nombre = st.selectbox("Motor de Render", [
             "Nano Banana Pro (Gemini 3 Pro Image)",
-            "Nano Banana (Gemini 2.5 Flash Image)"
+            "Nano Banana (Gemini 2.5 Flash Image)",
+            "Imagen 4.0 (Generativo)" # <--- 1. AÑADE ESTA LÍNEA (NOMBRE VISIBLE)
         ])
         model_map = {
             "Nano Banana Pro (Gemini 3 Pro Image)": "gemini-3-pro-image-preview",
-            "Nano Banana (Gemini 2.5 Flash Image)": "gemini-2.5-flash-image"
+            "Nano Banana (Gemini 2.5 Flash Image)": "gemini-2.5-flash-image",
+            "Imagen 4.0 (Generativo)": "imagen-4.0-generate-001" # <--- 2. AÑADE ESTA LÍNEA (ID DEL MODELO)
         }
 
     with c_controls_2:
