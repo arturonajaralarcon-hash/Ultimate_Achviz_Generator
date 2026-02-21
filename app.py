@@ -7,6 +7,14 @@ import json
 import os
 import time
 import numpy as np
+# --- PARCHE PARA USAR STREAMLIT ACTUALIZADO ---
+try:
+    import streamlit.elements.image
+    from streamlit.elements.lib.image_utils import image_to_url
+    streamlit.elements.image.image_to_url = image_to_url
+except ImportError:
+    pass
+# ----------------------------------------------
 from streamlit_drawable_canvas import st_canvas
 
 # --- CONFIGURACIÓN DE PÁGINA ---
