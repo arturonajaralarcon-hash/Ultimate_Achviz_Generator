@@ -115,7 +115,6 @@ if check_password():
         
 # --- ZONA 1: REFERENCIAS Y PORTAPAPELES ---
     st.subheader("1. Ingredientes Visuales (Referencias)")
-    st.info("💡 **Tip de emplatado:** Haz clic en el recuadro de abajo y presiona **Ctrl + V** para sazonar pegando directamente tus imágenes (recortes) desde el portapapeles.")
     
     uploaded_files = st.file_uploader("Sube o pega tus fotos aquí", 
                                      type=["png", "jpg", "jpeg"], accept_multiple_files=True)
