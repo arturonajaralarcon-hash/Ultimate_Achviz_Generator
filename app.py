@@ -6,19 +6,29 @@ from io import BytesIO
 import json
 import os
 import time
+import numpy as np
+from streamlit_drawable_canvas import st_canvas
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Generador de imagen DeMos", layout="wide", page_icon="😸")
 
-# --- FUNCIONES DE UTILIDAD (UPSCALING) ---
-def upscale_image(image, target_width=3840): # 4K estándar
-    """
-    Reescala usando el algoritmo LANCZOS (el mejor para fotografía).
-    """
+# --- FUNCIONES DE UTILIDAD ---
+def upscale_image(image, target_width=3840): 
     w_percent = (target_width / float(image.size[0]))
     h_size = int((float(image.size[1]) * float(w_percent)))
     img_resized = image.resize((target_width, h_size), PIL.Image.Resampling.LANCZOS)
     return img_resized
+
+def merge_canvas_drawing(bg_image, canvas_data):
+    """Fusiona el dibujo del canvas (numpy array) con la imagen original PIL"""
+    if canvas_data is None:
+        return bg_image.convert("RGB")
+    bg = bg_image.copy().convert("RGBA")
+    drawing = PIL.Image.fromarray(canvas_data.astype('uint8'), 'RGBA')
+    # Redimensionar el dibujo al tamaño original de la imagen
+    drawing = drawing.resize(bg.size, PIL.Image.Resampling.LANCZOS)
+    bg.alpha_composite(drawing)
+    return bg.convert("RGB")
 
 # --- CARGADOR DE DATOS JSON ---
 @st.cache_data
@@ -46,6 +56,8 @@ if "referencias" not in st.session_state:
     st.session_state.referencias = [] 
 if "historial" not in st.session_state:
     st.session_state.historial = []
+if "prompt_mejorado" not in st.session_state:
+    st.session_state.prompt_mejorado = ""
 if "prompt_final" not in st.session_state:
     st.session_state.prompt_final = ""
 if "json_data" not in st.session_state:
@@ -54,11 +66,9 @@ if "json_data" not in st.session_state:
     st.session_state.json_msg = msg
 
 # --- SEGURIDAD ---
-# Intenta leer de secrets, si falla usa fallback
 try:
     PASSWORD_ACCESO = st.secrets["PASSWORD_ACCESO"]
 except Exception:
-    # Esto evita que la app se rompa si no has configurado el toml todavía
     PASSWORD_ACCESO = "archviz2026" 
 
 def check_password():
@@ -79,77 +89,46 @@ if check_password():
 
     # --- ENCABEZADO ---
     st.title("Generador de Imagen DeMos")
-    st.caption("ArchViz Specialized | Nano Banana Series")
+    st.caption("ArchViz Specialized | Nano Banana Series & Imagen 3")
 
-    # --- TEXTO DE BIENVENIDA / TUTORIAL ---
-    with st.expander("📘 Glosario de Palabras Clave y Tutorial (PromptAssistantGEM)", expanded=False):
+    with st.expander("📘 Glosario de Palabras Clave y Tutorial", expanded=False):
         st.markdown("""
-        **Para ayudarte a comenzar, aquí tienes una lista de las palabras clave disponibles y sus funciones dentro del sistema PromptAssistantGEM:**
-
-        ### Glosario de Palabras Clave
-        * **Help:** Proporciona esta lista de palabras clave y explica brevemente sus funciones.
-        * **Set / Settings:** Muestra los parámetros fijos activos (como la relación de aspecto) y permite modificarlos.
-        * **Platform:** Cambia la plataforma de IA específica para la cual se escriben los prompts (ej. Midjourney, DALL-E, Gemini).
-        * **Improve:** Mejora un prompt simple del usuario convirtiéndolo en una versión detallada y de alta calidad.
-        * **Improve edit:** Un activador especializado para la edición de imágenes. Traduce comandos basados en formas (como "Eliminar ROJO") en instrucciones detalladas.
-        * **Multiple:** Genera varias opciones diferentes del mismo prompt. Ejemplo: Multiple: 3.
-        * **Chance:** Modifica el prompt o añade texto según se solicite. Fórmula: cambios + (to) 'prompt original'.
-        * **Describe:** Analiza una imagen cargada y la convierte en un prompt basado en una categoría. Ejemplo: Describe + architectural.
-        * **Reference:** Toma características específicas de una imagen cargada (paleta de colores, atmósfera) para usarlas en el siguiente prompt.
-        * **Original:** Devuelve y une todos los prompts iniciales y cambios realizados durante la sesión.
-        * **Question:** Responde dudas sobre ingeniería de prompts y ofrece recomendaciones específicas.
-        * **Clear / clean:** Olvida todo el trabajo anterior y comienza desde cero.
-
-        ### Categorías Especializadas
-        Si tu prompt comienza con *Architectural* o *Interior Design*, el asistente utiliza "Recetas" específicas:
-        * **Architectural Recipe:** Incluye Ángulo de cámara, Tipo de imagen, Estilo, Tipo de edificio, Inspiración, Punto focal, Materiales, Iluminación y Estado de ánimo.
-        * **Interior Design Recipe:** Incluye Ángulo de cámara, Tipo de habitación, Estilo, Marca, Punto focal, Texturas e Iluminación.
-        * **Brainstorm / Brainstorming:** Ofrece ideas congruentes y creativas para mejorar el prompt.
-        * **Missing Parts:** Identifica parámetros faltantes y sugiere mejoras para completarlos.
-
-        ### Tutorial Corto
-        1.  **Define tus Ajustes:** Comienza indicando si prefieres una relación de aspecto.
-        2.  **Combina Palabras Clave:** "Reference: color palette, Improve: un gato negro durmiendo en un sofá. Multiple: 2".
-        3.  **Refina Ediciones:** "Improve edit: una foto de un escritorio, Remove RED marked shapes, insert in BLUE a vintage laptop".
-        
-        *¿Cómo te gustaría empezar? ¿Deseas aplicar algún ajuste predeterminado para esta sesión?*
+        **Comandos principales:**
+        * **Improve:** Mejora tu prompt.
+        * **Improve edit:** Para usar con el Modo Dibujo. Escribe `Improve edit: <descripción>, Remove RED marked shapes`.
+        * **Architectural / Interior Design Recipe:** Usa las fórmulas maestras.
         """)
-        
         if st.session_state.json_msg and "✅" in st.session_state.json_msg:
             st.success(st.session_state.json_msg)
         else:
             st.warning(st.session_state.json_msg or "Cargando JSONs...")
-
     st.divider()
 
     # --- CONTROLES SUPERIORES ---
     c_controls_1, c_controls_2, c_controls_3 = st.columns([2, 1, 1])
-    
     with c_controls_1:
         modelo_nombre = st.selectbox("Motor de Render", [
             "Nano Banana Pro (Gemini 3 Pro Image)",
             "Nano Banana (Gemini 2.5 Flash Image)",
-            "Imagen 4.0 (Generativo)" # <--- 1. AÑADE ESTA LÍNEA (NOMBRE VISIBLE)
+            "Imagen 4.0 (Generativo)" 
         ])
         model_map = {
             "Nano Banana Pro (Gemini 3 Pro Image)": "gemini-3-pro-image-preview",
             "Nano Banana (Gemini 2.5 Flash Image)": "gemini-2.5-flash-image",
-            "Imagen 4.0 (Generativo)": "imagen-4.0-generate-001" # <--- 2. AÑADE ESTA LÍNEA (ID DEL MODELO)
+            "Imagen 4.0 (Generativo)": "imagen-4.0-generate-001" 
         }
-    
     with c_controls_2:
         st.write("") 
         st.write("") 
         if st.button("Recargar JSONs", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
-            
     with c_controls_3:
         pass
 
-    # --- ZONA 1: REFERENCIAS ---
-    st.subheader("1. Imagenes de referencia")
-    uploaded_files = st.file_uploader("Sube fotos a editar o referencias de estilo", 
+    # --- ZONA 1: REFERENCIAS Y EDITOR ---
+    st.subheader("1. Imagenes de referencia y Editor")
+    uploaded_files = st.file_uploader("Sube fotos para analizar o editar (Modo Máscara)", 
                                      type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     
     if uploaded_files:
@@ -160,27 +139,72 @@ if check_password():
 
     refs_activas = []
     if st.session_state.referencias:
-        cols = st.columns(6)
-        for i, ref in enumerate(st.session_state.referencias):
-            with cols[i % 6]:
-                st.image(ref["img"], use_container_width=True)
-                if st.checkbox(f"Usar", key=f"check_{ref['name']}"):
-                    refs_activas.append(ref["img"])
-        if st.button("Limpiar Biblioteca"):
+        col_btn_limpiar, _ = st.columns([1, 4])
+        if col_btn_limpiar.button("🗑️ Limpiar Biblioteca"):
             st.session_state.referencias = []
             st.rerun()
+            
+        cols_refs = st.columns(3) # 3 por fila para dar espacio al canvas
+        for i, ref in enumerate(st.session_state.referencias):
+            with cols_refs[i % 3]:
+                with st.expander(f"🖼️ {ref['name'][:15]}...", expanded=False):
+                    edit_mode = st.toggle("Modo Dibujo", key=f"tgl_{i}", help="Dibuja máscaras de color sobre la imagen")
+                    
+                    if edit_mode:
+                        c_color, c_width = st.columns([1, 1])
+                        color_name = c_color.selectbox("Pincel", ["Rojo", "Verde", "Azul", "Amarillo"], key=f"col_{i}")
+                        color_map = {"Rojo": "#FF0000", "Verde": "#00FF00", "Azul": "#0000FF", "Amarillo": "#FFFF00"}
+                        stroke_width = c_width.slider("Grosor", 1, 50, 15, key=f"wid_{i}")
+                        
+                        # Ajustar tamaño visual del canvas
+                        w, h = ref["img"].size
+                        ratio = h / w
+                        disp_w = 280
+                        disp_h = int(disp_w * ratio)
+                        
+                        st.caption("Usa la flecha circular del canvas para deshacer.")
+                        canvas_result = st_canvas(
+                            fill_color="rgba(0, 0, 0, 0)",
+                            stroke_width=stroke_width,
+                            stroke_color=color_map[color_name],
+                            background_image=ref["img"],
+                            height=disp_h,
+                            width=disp_w,
+                            drawing_mode="freedraw",
+                            key=f"canvas_{i}"
+                        )
+                        
+                        if st.checkbox("✅ Usar Editada", key=f"chk_edit_{i}"):
+                            final_img = merge_canvas_drawing(ref["img"], canvas_result.image_data)
+                            refs_activas.append(final_img)
+                    else:
+                        st.image(ref["img"], use_container_width=True)
+                        if st.checkbox("✅ Usar Original", key=f"chk_orig_{i}"):
+                            refs_activas.append(ref["img"].convert("RGB"))
 
     st.divider()
 
-    # --- ZONA 2: ULTIMATE PROMPT ENGINE ---
+    # --- ZONA 2: ULTIMATE PROMPT ENGINE (LADO A LADO) ---
     st.subheader("2. Generador de Prompt")
     
-    st.markdown("**Prompt inicial**")
-    cmd_input = st.text_area("Escribe tu prompt (ej: 'Architectural: Museo moderno' o 'Improve: casa de playa')", height=100)
+    col_in, col_out = st.columns(2)
     
-    if st.button("Mejorar Prompt", type="primary", use_container_width=True):
+    # Columna Izquierda: Entrada
+    with col_in:
+        st.markdown("**1. Prompt inicial (Idea)**")
+        cmd_input = st.text_area("Comando:", height=150, label_visibility="collapsed", 
+                                 placeholder="Ej: Improve edit: foto de una sala, Remove RED marked shapes")
+        btn_mejorar = st.button("✨ Procesar Idea", type="primary", use_container_width=True)
+
+    # Columna Derecha: Salida del Modelo (Solo Lectura)
+    with col_out:
+        st.markdown("**2. Prompt mejorado (Traducción de IA)**")
+        st.info(st.session_state.prompt_mejorado if st.session_state.prompt_mejorado else "La traducción estructurada aparecerá aquí...")
+
+    # Lógica de mejora de prompt
+    if btn_mejorar:
         if cmd_input:
-            with st.spinner("Mejorando Prompt..."):
+            with st.spinner("Consultando bases de datos..."):
                 try:
                     json_context = json.dumps(st.session_state.json_data, indent=2, ensure_ascii=False) if st.session_state.json_data else "No JSON data."
                     
@@ -193,8 +217,9 @@ if check_password():
                     1. 'Improve:': Convert simple input into high-quality detailed prompt using JSON terms.
                     2. 'Architectural Recipe': Must include Camera Angle, Image Type, Style, Building Type, Inspiration, Focal Point, Materials, Lighting, Mood.
                     3. 'Interior Design Recipe': Must include Camera Angle, Room Type, Style, Brand, Focal Point, Textures, Lighting.
-                    4. 'Platform:': Optimize terminology for the specified AI (Midjourney, Gemini, etc).
+                    4. 'Platform:': Optimize terminology for the specified AI.
                     5. 'Multiple:': If requested, provide options.
+                    6. 'Improve edit:': Translate shape-based commands using colors (Red, Blue, etc.) into strict instructions for image editing.
                     
                     TASK: Analyze the USER COMMAND and output ONLY the final optimized prompt text ready for rendering.
                     
@@ -208,8 +233,9 @@ if check_password():
                     
                     if res.text:
                         texto_limpio = res.text.strip()
+                        st.session_state.prompt_mejorado = texto_limpio
                         st.session_state.prompt_final = texto_limpio
-                        st.session_state["fp_area"] = texto_limpio
+                        st.session_state["fp_area"] = texto_limpio # Actualiza la caja de abajo
                         st.rerun()
                     else:
                         st.error("El modelo devolvió una respuesta vacía.")
@@ -219,14 +245,11 @@ if check_password():
         else:
             st.warning("Escribe un comando primero.")
 
-    st.markdown("**Prompt Final (Editable)**")
-    
-    if "prompt_final" not in st.session_state:
-        st.session_state.prompt_final = ""
-
-    final_prompt = st.text_area("Resultado optimizado:", 
+    # Fila inferior: Prompt Final Editable
+    st.markdown("**3. Prompt Final (Ajuste Manual)**")
+    final_prompt = st.text_area("Este es el texto que se enviará al Motor de Render:", 
                               value=st.session_state.prompt_final, 
-                              height=150, 
+                              height=120, 
                               key="fp_area")
     
     if final_prompt != st.session_state.prompt_final:
@@ -235,83 +258,105 @@ if check_password():
     # --- ZONA 3: GENERACIÓN DE IMAGEN ---
     st.divider()
     
-    if st.button("Crear Imagen", use_container_width=True):
+    if st.button("🚀 Renderizar Imagen", use_container_width=True):
         if st.session_state.prompt_final:
-            with st.status("Renderizando...", expanded=False) as status:
+            with st.status("Procesando imagen...", expanded=False) as status:
                 try:
                     prompt_render = f"High quality architectural visualization. {st.session_state.prompt_final}"
-                    contenido_solicitud = [prompt_render] + refs_activas
-                    
-                    response = client.models.generate_content(
-                        model=model_map[modelo_nombre],
-                        contents=contenido_solicitud,
-                        config=types.GenerateContentConfig(
-                            response_modalities=["IMAGE"]
+                    img_result = None
+
+                    # CASO A: Imagen 3 / 4
+                    if "imagen-" in model_map[modelo_nombre]:
+                        response = client.models.generate_images(
+                            model=model_map[modelo_nombre],
+                            prompt=prompt_render,
+                            config=types.GenerateImagesConfig(
+                                number_of_images=1,
+                                aspect_ratio="16:9" 
+                            )
                         )
-                    )
-                    
-                    if response and response.parts:
-                        img_result = None
-                        for part in response.parts:
-                            if part.inline_data:
-                                img_result = PIL.Image.open(BytesIO(part.inline_data.data))
-                                break
-                        
-                        if img_result:
-                            st.session_state.historial.insert(0, img_result)
-                            if len(st.session_state.historial) > 10:
-                                st.session_state.historial.pop()
-                            status.update(label="Renderizado completo", state="complete")
-                            st.rerun()
-                        else:
-                            st.error("No se generó imagen (Posible filtro de seguridad).")
+                        if response and response.generated_images:
+                            img_result = response.generated_images[0].image._pil_image
+
+                    # CASO B: Gemini Nano Banana
                     else:
-                        st.error("Error API.")
+                        contenido_solicitud = [prompt_render] + refs_activas
+                        response = client.models.generate_content(
+                            model=model_map[modelo_nombre],
+                            contents=contenido_solicitud,
+                            config=types.GenerateContentConfig(
+                                response_modalities=["IMAGE"]
+                            )
+                        )
+                        if response and response.parts:
+                            for part in response.parts:
+                                if part.inline_data:
+                                    img_result = PIL.Image.open(BytesIO(part.inline_data.data))
+                                    break
+                    
+                    # PROCESAMIENTO FINAL: Guardar imagen + prompt
+                    if img_result:
+                        nuevo_registro = {
+                            "img": img_result,
+                            "prompt": st.session_state.prompt_final # Guardamos el prompt exacto
+                        }
+                        st.session_state.historial.insert(0, nuevo_registro)
+                        if len(st.session_state.historial) > 10:
+                            st.session_state.historial.pop()
+                        
+                        status.update(label="Renderizado completo", state="complete")
+                        st.rerun()
+                    else:
+                        st.error("No se generó imagen (Posible filtro de seguridad).")
                         
                 except Exception as e:
                     st.error(f"Error crítico: {e}")
         else:
             st.warning("El campo de prompt final está vacío.")
 
-    # --- HISTORIAL CON BOTONES INTEGRADOS ---
+    # --- HISTORIAL CON BOTONES Y PROMPTS ---
     if st.session_state.historial:
         st.divider()
-        st.subheader("Historial Reciente (Con Herramientas)")
+        st.subheader("Historial de Sesión")
         
-        # Usamos columnas de ancho fijo para que se vea ordenado
         cols = st.columns(3)
-        
-        for i, img in enumerate(st.session_state.historial):
+        for i, item in enumerate(st.session_state.historial):
+            
+            # Compatibilidad si había imágenes sueltas de la sesión anterior
+            if isinstance(item, PIL.Image.Image):
+                img = item
+                prompt_txt = "Prompt no registrado"
+            else:
+                img = item["img"]
+                prompt_txt = item["prompt"]
+                
             with cols[i % 3]:
                 st.image(img, use_container_width=True)
                 
-                # Botonera debajo de cada imagen
+                # Cuadro de texto para mostrar el prompt (solo lectura)
+                st.text_area("Prompt:", value=prompt_txt, height=80, disabled=True, key=f"txt_{i}", label_visibility="collapsed")
+                
                 c1, c2, c3 = st.columns([1, 1, 1])
                 
-                # 1. Botón Descarga Normal (Icono Disco)
                 buf = BytesIO()
                 img.save(buf, format="PNG")
-                c1.download_button("💾", buf.getvalue(), f"demos_{i}.png", "image/png", key=f"dl_{i}", help="Descargar Original")
+                c1.download_button("💾", buf.getvalue(), f"demos_{i}.png", "image/png", key=f"dl_{i}")
                 
-                # 2. Botón Reescalar 4K (Icono Lupa)
-                if c2.button("🔍 4K", key=f"up_{i}", help="Procesar a 4K"):
+                if c2.button("🔍 4K", key=f"up_{i}"):
                     with st.spinner("Reescalando..."):
                         img_4k = upscale_image(img)
                         buf_4k = BytesIO()
                         img_4k.save(buf_4k, format="PNG", optimize=True)
-                        # Guardamos en session_state para que el botón de descarga persista
                         st.session_state[f"ready_4k_{i}"] = buf_4k.getvalue()
                         st.rerun()
                 
-                # Si ya se procesó, mostramos el botón de descarga del 4K
                 if f"ready_4k_{i}" in st.session_state:
-                    c2.download_button("⬇️", st.session_state[f"ready_4k_{i}"], f"demos_4k_{i}.png", "image/png", key=f"dl4k_{i}", help="Descargar versión 4K")
+                    c2.download_button("⬇️", st.session_state[f"ready_4k_{i}"], f"4k_{i}.png", "image/png", key=f"dl4k_{i}")
 
-                # 3. Botón Usar como Referencia (Icono Reciclar)
-                if c3.button("🔄 Ref", key=f"ref_{i}", help="Usar como referencia"):
+                if c3.button("🔄 Ref", key=f"ref_{i}"):
                     st.session_state.referencias.append({
                         "img": img,
-                        "name": f"ref_hist_{int(time.time())}.png"
+                        "name": f"hist_{int(time.time())}.png"
                     })
                     st.toast("Añadida a Referencias", icon="✅")
                     time.sleep(0.5)
