@@ -10,8 +10,6 @@ import numpy as np
 from streamlit_drawable_canvas import st_canvas
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-# ... (sigue tu código normal)
-# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Generador de imagen DeMos", layout="wide", page_icon="😸")
 
 # --- FUNCIONES DE UTILIDAD ---
