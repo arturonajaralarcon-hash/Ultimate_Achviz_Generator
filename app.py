@@ -6,8 +6,6 @@ from io import BytesIO
 import json
 import os
 import time
-import numpy as np
-from streamlit_drawable_canvas import st_canvas
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Generador de imagen DeMos", layout="wide", page_icon="😸")
@@ -18,17 +16,6 @@ def upscale_image(image, target_width=3840):
     h_size = int((float(image.size[1]) * float(w_percent)))
     img_resized = image.resize((target_width, h_size), PIL.Image.Resampling.LANCZOS)
     return img_resized
-
-def merge_canvas_drawing(bg_image, canvas_data):
-    """Fusiona el dibujo del canvas (numpy array) con la imagen original PIL"""
-    if canvas_data is None:
-        return bg_image.convert("RGB")
-    bg = bg_image.copy().convert("RGBA")
-    drawing = PIL.Image.fromarray(canvas_data.astype('uint8'), 'RGBA')
-    # Redimensionar el dibujo al tamaño original de la imagen
-    drawing = drawing.resize(bg.size, PIL.Image.Resampling.LANCZOS)
-    bg.alpha_composite(drawing)
-    return bg.convert("RGB")
 
 # --- CARGADOR DE DATOS JSON ---
 @st.cache_data
@@ -95,7 +82,7 @@ if check_password():
         st.markdown("""
         **Comandos principales:**
         * **Improve:** Mejora tu prompt.
-        * **Improve edit:** Para usar con el Modo Dibujo. Escribe `Improve edit: <descripción>, Remove RED marked shapes`.
+        * **Improve edit:** Ideal para editar. Usa Paint para pintar áreas y escribe: `Improve edit: <descripción>, Remove RED marked shapes`.
         * **Architectural / Interior Design Recipe:** Usa las fórmulas maestras.
         """)
         if st.session_state.json_msg and "✅" in st.session_state.json_msg:
@@ -126,9 +113,11 @@ if check_password():
     with c_controls_3:
         pass
 
-    # --- ZONA 1: REFERENCIAS Y EDITOR ---
-    st.subheader("1. Imagenes de referencia y Editor")
-    uploaded_files = st.file_uploader("Sube fotos para analizar o editar (Modo Máscara)", 
+    # --- ZONA 1: REFERENCIAS Y PORTAPAPELES ---
+    st.subheader("1. Imagenes de Referencia")
+    st.info("💡 **Tip de Edición Rápida:** Haz clic en el recuadro de abajo y presiona **Ctrl + V** para pegar directamente imágenes desde tu portapapeles (por ejemplo, recién pintadas en Paint).")
+    
+    uploaded_files = st.file_uploader("Sube o pega fotos para analizar o editar (Modo Máscara)", 
                                      type=["png", "jpg", "jpeg"], accept_multiple_files=True)
     
     if uploaded_files:
@@ -144,43 +133,12 @@ if check_password():
             st.session_state.referencias = []
             st.rerun()
             
-        cols_refs = st.columns(3) # 3 por fila para dar espacio al canvas
+        cols_refs = st.columns(6) # Mostramos las referencias de forma compacta
         for i, ref in enumerate(st.session_state.referencias):
-            with cols_refs[i % 3]:
-                with st.expander(f"🖼️ {ref['name'][:15]}...", expanded=False):
-                    edit_mode = st.toggle("Modo Dibujo", key=f"tgl_{i}", help="Dibuja máscaras de color sobre la imagen")
-                    
-                    if edit_mode:
-                        c_color, c_width = st.columns([1, 1])
-                        color_name = c_color.selectbox("Pincel", ["Rojo", "Verde", "Azul", "Amarillo"], key=f"col_{i}")
-                        color_map = {"Rojo": "#FF0000", "Verde": "#00FF00", "Azul": "#0000FF", "Amarillo": "#FFFF00"}
-                        stroke_width = c_width.slider("Grosor", 1, 50, 15, key=f"wid_{i}")
-                        
-                        # Ajustar tamaño visual del canvas
-                        w, h = ref["img"].size
-                        ratio = h / w
-                        disp_w = 280
-                        disp_h = int(disp_w * ratio)
-                        
-                        st.caption("Usa la flecha circular del canvas para deshacer.")
-                        canvas_result = st_canvas(
-                            fill_color="rgba(0, 0, 0, 0)",
-                            stroke_width=stroke_width,
-                            stroke_color=color_map[color_name],
-                            background_image=ref["img"],
-                            height=disp_h,
-                            width=disp_w,
-                            drawing_mode="freedraw",
-                            key=f"canvas_{i}"
-                        )
-                        
-                        if st.checkbox("✅ Usar Editada", key=f"chk_edit_{i}"):
-                            final_img = merge_canvas_drawing(ref["img"], canvas_result.image_data)
-                            refs_activas.append(final_img)
-                    else:
-                        st.image(ref["img"], use_container_width=True)
-                        if st.checkbox("✅ Usar Original", key=f"chk_orig_{i}"):
-                            refs_activas.append(ref["img"].convert("RGB"))
+            with cols_refs[i % 6]:
+                st.image(ref["img"], use_container_width=True)
+                if st.checkbox("✅ Usar", key=f"chk_orig_{i}"):
+                    refs_activas.append(ref["img"].convert("RGB"))
 
     st.divider()
 
