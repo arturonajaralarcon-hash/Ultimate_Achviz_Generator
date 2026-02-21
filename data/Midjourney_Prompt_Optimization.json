@@ -2,13 +2,28 @@
   "prompt": {
     "main_subject": "",
     "action": "",
+    "human_factor": "",
     "environment": "",
     "mood": "",
     "art_style": [],
-    "camera_settings": {"shot_type": "", "lens": "", "depth_of_field": ""},
-    "lighting": {"type": [], "direction": "", "intensity": ""},
-    "colors": {"palette": [], "dominant_colors": []},
+    "camera_settings": {
+      "shot_type": "",
+      "camera_type": "",
+      "lens": "",
+      "depth_of_field": "",
+      "imperfections": []
+    },
+    "lighting": {
+      "type": [],
+      "direction": "",
+      "intensity": ""
+    },
+    "colors": {
+      "palette": [],
+      "dominant_colors": []
+    },
     "texture_materials": [],
+    "lived_in_clutter": [],
     "additional_details": []
   },
   "parameters": {
