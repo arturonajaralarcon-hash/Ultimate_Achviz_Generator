@@ -101,6 +101,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- FUNCIONES DE UTILIDAD (LA BATIDORA 4K) ---
+def upscale_image(image, target_width=3840): 
+    w_percent = (target_width / float(image.size[0]))
+    h_size = int((float(image.size[1]) * float(w_percent)))
+    img_resized = image.resize((target_width, h_size), PIL.Image.Resampling.LANCZOS)
+    return img_resized
+    
 # --- CARGADOR DE DATOS JSON ---
 @st.cache_data
 def load_json_data(folder_path="data"):
