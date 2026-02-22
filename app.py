@@ -304,13 +304,13 @@ if check_password():
     if final_prompt != st.session_state.prompt_final:
         st.session_state.prompt_final = final_prompt
 
-    # --- ZONA 3: GENERACIÓN DE IMAGEN ---
+# --- ZONA 3: GENERACIÓN DE IMAGEN ---
     st.divider()
     
     if st.button("🚀 Renderizar Imagen", width="stretch"):
         if st.session_state.prompt_final:
             with st.status("Procesando imagen...", expanded=False) as status:
-                try:
+                try: 
                     prompt_render = f"High quality architectural visualization. {st.session_state.prompt_final}"
                     img_result = None
 
@@ -332,5 +332,33 @@ if check_password():
                         contenido_solicitud = [prompt_render] + refs_activas
                         response = client.models.generate_content(
                             model=model_map[modelo_nombre],
-                            contents=contenido
-                    )
+                            contents=contenido_solicitud,
+                            config=types.GenerateContentConfig(
+                                response_modalities=["IMAGE"]
+                            )
+                        ) 
+                        if response and response.parts:
+                            for part in response.parts:
+                                if part.inline_data:
+                                    img_result = PIL.Image.open(BytesIO(part.inline_data.data))
+                                    break
+                    
+                    # PROCESAMIENTO FINAL: Guardar imagen + prompt
+                    if img_result:
+                        nuevo_registro = {
+                            "img": img_result,
+                            "prompt": st.session_state.prompt_final 
+                        }
+                        st.session_state.historial.insert(0, nuevo_registro)
+                        if len(st.session_state.historial) > 10:
+                            st.session_state.historial.pop()
+                        
+                        status.update(label="Renderizado completo", state="complete")
+                        st.rerun()
+                    else:
+                        st.error("No se generó imagen (Posible filtro de seguridad).")
+                        
+                except Exception as e: 
+                    st.error(f"Error crítico en la generación: {e}")
+        else:
+            st.warning("El campo de prompt final está vacío.")
