@@ -145,8 +145,6 @@ if "json_data" not in st.session_state:
 # --- SEGURIDAD ---
 try:
     PASSWORD_ACCESO = st.secrets["PASSWORD_ACCESO"]
-except Exception:
-    PASSWORD_ACCESO = "archviz2026" 
 
 def check_password():
     if "authenticated" not in st.session_state:
