@@ -157,6 +157,11 @@ def check_password():
                 st.error("Incorrecta")
         return False
     return True
+
+# AQUÍ SE CORRIGIÓ EL FLUJO PRINCIPAL DE LA APP
+if check_password():
+    client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
+
     # --- ENCABEZADO ---
     st.title("Ultimate Archviz Generator")
     st.caption("ArchViz Specialized | Nano Banana Series & Imagen 3")
