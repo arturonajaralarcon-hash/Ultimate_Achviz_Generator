@@ -143,8 +143,7 @@ if "json_data" not in st.session_state:
     st.session_state.json_msg = msg
 
 # --- SEGURIDAD ---
-try:
-    PASSWORD_ACCESO = st.secrets["PASSWORD_ACCESO"]
+PASSWORD_ACCESO = st.secrets["PASSWORD_ACCESO"]
 
 def check_password():
     if "authenticated" not in st.session_state:
@@ -158,10 +157,6 @@ def check_password():
                 st.error("Incorrecta")
         return False
     return True
-
-if check_password():
-    client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
-
     # --- ENCABEZADO ---
     st.title("Ultimate Archviz Generator")
     st.caption("ArchViz Specialized | Nano Banana Series & Imagen 3")
