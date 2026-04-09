@@ -163,7 +163,7 @@ if check_password():
 
     # --- ENCABEZADO ---
     st.title("Ultimate Archviz Generator")
-    st.caption("ArchViz Specialized | Nano Banana, Imagen 3 & Veo 3 Video")
+    st.caption("ArchViz Specialized | Nano Banana, Imagen 3 & Veo 3.1 Video")
 
     with st.expander("📘 Glosario de Palabras Clave y Tutorial", expanded=False):
         st.markdown("""
@@ -185,7 +185,7 @@ if check_password():
             "Nano Banana Pro (Gemini 3 Pro Image)",
             "Nano Banana (Gemini 2.5 Flash Image)",
             "Imagen 4.0 (Generativo)",
-            "Veo 3.1 (Video Generativo)" # NUEVO MODELO AÑADIDO
+            "Veo 3.1 (Video Generativo)" 
         ])
         model_map = {
             "Nano Banana Pro (Gemini 3 Pro Image)": "gemini-3-pro-image-preview",
@@ -325,10 +325,25 @@ if check_password():
                     # CASO B: Video con Veo 3.1
                     elif "veo-" in model_map[modelo_nombre]:
                         status.update(label="🎬 Iniciando generación de video (Esto puede tardar varios minutos)...", state="running")
-                        operation = client.models.generate_videos(
-                            model=model_map[modelo_nombre],
-                            prompt=prompt_render,
-                        )
+                        
+                        # PREPARACIÓN PARA VEO 3.1
+                        video_kwargs = {
+                            "model": model_map[modelo_nombre],
+                            "prompt": prompt_render,
+                        }
+                        
+                        # ¡AQUÍ ESTÁ LA MAGIA CORREGIDA! 
+                        # Si marcaste la casilla "Usar" en una foto, Veo la tomará como el Frame Inicial
+                        if refs_activas:
+                            video_kwargs["image"] = refs_activas[0] 
+                            
+                            # Si usaste más de una, las demás se van como referencias
+                            if len(refs_activas) > 1:
+                                video_kwargs["config"] = types.GenerateVideosConfig(
+                                    reference_images=refs_activas[1:]
+                                )
+
+                        operation = client.models.generate_videos(**video_kwargs)
                         
                         # Loop de espera para el video
                         while not operation.done:
@@ -340,11 +355,8 @@ if check_password():
                         
                         if operation.response and operation.response.generated_videos:
                             generated_video = operation.response.generated_videos[0]
-                            
-                            # Crear un nombre único para el archivo de video
                             video_path = f"archviz_video_{int(time.time())}.mp4"
                             
-                            # Descargar y guardar según la documentación
                             client.files.download(file=generated_video.video)
                             generated_video.video.save(video_path)
                             video_result_path = video_path
@@ -371,8 +383,8 @@ if check_password():
                     if img_result or video_result_path:
                         nuevo_registro = {
                             "type": "video" if video_result_path else "image",
-                            "img": img_result, # Será None si es video
-                            "file_path": video_result_path, # Será None si es imagen
+                            "img": img_result, 
+                            "file_path": video_result_path, 
                             "prompt": st.session_state.prompt_final 
                         }
                         st.session_state.historial.insert(0, nuevo_registro)
@@ -397,7 +409,6 @@ if check_password():
         cols = st.columns(3)
         for i, item in enumerate(st.session_state.historial):
             
-            # Checar si es formato antiguo (solo imagen) o el nuevo formato de diccionario
             is_video = False
             if isinstance(item, dict):
                 is_video = item.get("type") == "video"
@@ -415,7 +426,6 @@ if check_password():
                         st.video(video_path)
                         st.text_area("Prompt:", value=prompt_txt, height=80, disabled=True, key=f"txt_{i}", label_visibility="collapsed")
                         
-                        # Solo botón de descargar para video (no 4k ni referencias)
                         c1, c2 = st.columns([1, 1])
                         with open(video_path, "rb") as f:
                             c1.download_button("💾 Guardar MP4", f, file_name=f"archviz_vid_{i}.mp4", mime="video/mp4", key=f"dl_{i}")
