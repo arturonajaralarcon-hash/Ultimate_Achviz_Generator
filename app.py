@@ -158,13 +158,12 @@ def check_password():
         return False
     return True
 
-# AQUÍ SE CORRIGIÓ EL FLUJO PRINCIPAL DE LA APP
 if check_password():
     client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
 
     # --- ENCABEZADO ---
     st.title("Ultimate Archviz Generator")
-    st.caption("ArchViz Specialized | Nano Banana Series & Imagen 3")
+    st.caption("ArchViz Specialized | Nano Banana, Imagen 3 & Veo 3 Video")
 
     with st.expander("📘 Glosario de Palabras Clave y Tutorial", expanded=False):
         st.markdown("""
@@ -185,12 +184,14 @@ if check_password():
         modelo_nombre = st.selectbox("Motor de Render", [
             "Nano Banana Pro (Gemini 3 Pro Image)",
             "Nano Banana (Gemini 2.5 Flash Image)",
-            "Imagen 4.0 (Generativo)" 
+            "Imagen 4.0 (Generativo)",
+            "Veo 3.1 (Video Generativo)" # NUEVO MODELO AÑADIDO
         ])
         model_map = {
             "Nano Banana Pro (Gemini 3 Pro Image)": "gemini-3-pro-image-preview",
             "Nano Banana (Gemini 2.5 Flash Image)": "gemini-2.5-flash-image",
-            "Imagen 4.0 (Generativo)": "imagen-4.0-generate-001" 
+            "Imagen 4.0 (Generativo)": "imagen-4.0-generate-001",
+            "Veo 3.1 (Video Generativo)": "veo-3.1-generate-preview" 
         }
     with c_controls_2:
         st.write("") 
@@ -234,19 +235,16 @@ if check_password():
     
     col_in, col_out = st.columns(2)
     
-    # Columna Izquierda: Entrada
     with col_in:
         st.markdown("**1. Prompt inicial (Idea)**")
         cmd_input = st.text_area("Comando:", height=150, label_visibility="collapsed", 
                                  placeholder="Ej: Improve edit: foto de una sala, Remove RED marked shapes")
         btn_mejorar = st.button("✨ Procesar Idea", type="primary", use_container_width=True)
 
-    # Columna Derecha: Salida del Modelo (Solo Lectura)
     with col_out:
         st.markdown("**2. Prompt mejorado (Traducción de IA)**")
         st.info(st.session_state.prompt_mejorado if st.session_state.prompt_mejorado else "La traducción estructurada aparecerá aquí...")
 
-    # Lógica de mejora de prompt
     if btn_mejorar:
         if cmd_input:
             with st.spinner("Consultando bases de datos..."):
@@ -290,7 +288,6 @@ if check_password():
         else:
             st.warning("Escribe un comando primero.")
 
-    # Fila inferior: Prompt Final Editable
     st.markdown("**3. Prompt Final (Ajuste Manual)**")
     final_prompt = st.text_area("Este es el texto que se enviará al Motor de Render:", 
                               value=st.session_state.prompt_final, 
@@ -300,18 +297,20 @@ if check_password():
     if final_prompt != st.session_state.prompt_final:
         st.session_state.prompt_final = final_prompt
 
-    # --- ZONA 3: GENERACIÓN DE IMAGEN ---
+    # --- ZONA 3: GENERACIÓN DE IMAGEN / VIDEO ---
     st.divider()
     
-    if st.button("🚀 Renderizar Imagen", use_container_width=True):
+    if st.button("🚀 Renderizar (Imagen / Video)", use_container_width=True):
         if st.session_state.prompt_final:
-            with st.status("Procesando imagen...", expanded=False) as status:
+            with st.status("Procesando...", expanded=True) as status:
                 try:
                     prompt_render = f"High quality architectural visualization. {st.session_state.prompt_final}"
                     img_result = None
+                    video_result_path = None
 
                     # CASO A: Imagen 3 / 4
                     if "imagen-" in model_map[modelo_nombre]:
+                        status.update(label="Generando imagen con Imagen 4.0...", state="running")
                         response = client.models.generate_images(
                             model=model_map[modelo_nombre],
                             prompt=prompt_render,
@@ -323,8 +322,36 @@ if check_password():
                         if response and response.generated_images:
                             img_result = response.generated_images[0].image._pil_image
 
-                    # CASO B: Gemini Nano Banana
+                    # CASO B: Video con Veo 3.1
+                    elif "veo-" in model_map[modelo_nombre]:
+                        status.update(label="🎬 Iniciando generación de video (Esto puede tardar varios minutos)...", state="running")
+                        operation = client.models.generate_videos(
+                            model=model_map[modelo_nombre],
+                            prompt=prompt_render,
+                        )
+                        
+                        # Loop de espera para el video
+                        while not operation.done:
+                            status.update(label="Procesando video con Veo3... Por favor espera ⏳", state="running")
+                            time.sleep(10)
+                            operation = client.operations.get(operation)
+                            
+                        status.update(label="Descargando el video generado...", state="running")
+                        
+                        if operation.response and operation.response.generated_videos:
+                            generated_video = operation.response.generated_videos[0]
+                            
+                            # Crear un nombre único para el archivo de video
+                            video_path = f"archviz_video_{int(time.time())}.mp4"
+                            
+                            # Descargar y guardar según la documentación
+                            client.files.download(file=generated_video.video)
+                            generated_video.video.save(video_path)
+                            video_result_path = video_path
+
+                    # CASO C: Gemini Nano Banana (Flash/Pro)
                     else:
+                        status.update(label="Generando imagen con Nano Banana...", state="running")
                         contenido_solicitud = [prompt_render] + refs_activas
                         response = client.models.generate_content(
                             model=model_map[modelo_nombre],
@@ -340,20 +367,22 @@ if check_password():
                                     img_result = PIL.Image.open(BytesIO(part.inline_data.data))
                                     break
                     
-                    # PROCESAMIENTO FINAL: Guardar imagen + prompt
-                    if img_result:
+                    # PROCESAMIENTO FINAL: Guardar en historial
+                    if img_result or video_result_path:
                         nuevo_registro = {
-                            "img": img_result,
+                            "type": "video" if video_result_path else "image",
+                            "img": img_result, # Será None si es video
+                            "file_path": video_result_path, # Será None si es imagen
                             "prompt": st.session_state.prompt_final 
                         }
                         st.session_state.historial.insert(0, nuevo_registro)
                         if len(st.session_state.historial) > 10:
                             st.session_state.historial.pop()
                         
-                        status.update(label="Renderizado completo", state="complete")
+                        status.update(label="¡Proceso completo!", state="complete")
                         st.rerun()
                     else:
-                        st.error("No se generó imagen. Revisa si la respuesta fue bloqueada o se devolvió formato de texto.")
+                        st.error("No se generó contenido. Revisa si la respuesta fue bloqueada por filtros de seguridad.")
                         
                 except Exception as e:
                     st.error(f"Error crítico durante la generación: {e}")
@@ -368,40 +397,59 @@ if check_password():
         cols = st.columns(3)
         for i, item in enumerate(st.session_state.historial):
             
-            if isinstance(item, PIL.Image.Image):
+            # Checar si es formato antiguo (solo imagen) o el nuevo formato de diccionario
+            is_video = False
+            if isinstance(item, dict):
+                is_video = item.get("type") == "video"
+                img = item.get("img")
+                prompt_txt = item.get("prompt", "Prompt no registrado")
+                video_path = item.get("file_path")
+            else:
                 img = item
                 prompt_txt = "Prompt no registrado"
-            else:
-                img = item["img"]
-                prompt_txt = item["prompt"]
                 
             with cols[i % 3]:
-                st.image(img, use_container_width=True)
+                # --- SI ES VIDEO ---
+                if is_video:
+                    if video_path and os.path.exists(video_path):
+                        st.video(video_path)
+                        st.text_area("Prompt:", value=prompt_txt, height=80, disabled=True, key=f"txt_{i}", label_visibility="collapsed")
+                        
+                        # Solo botón de descargar para video (no 4k ni referencias)
+                        c1, c2 = st.columns([1, 1])
+                        with open(video_path, "rb") as f:
+                            c1.download_button("💾 Guardar MP4", f, file_name=f"archviz_vid_{i}.mp4", mime="video/mp4", key=f"dl_{i}")
+                    else:
+                        st.error("Archivo de video no encontrado en disco.")
                 
-                st.text_area("Prompt:", value=prompt_txt, height=80, disabled=True, key=f"txt_{i}", label_visibility="collapsed")
-                
-                c1, c2, c3 = st.columns([1, 1, 1])
-                
-                buf = BytesIO()
-                img.save(buf, format="PNG")
-                c1.download_button("💾", buf.getvalue(), f"archviz_{i}.png", "image/png", key=f"dl_{i}")
-                
-                if c2.button("🔍 4K", key=f"up_{i}"):
-                    with st.spinner("Reescalando..."):
-                        img_4k = upscale_image(img)
-                        buf_4k = BytesIO()
-                        img_4k.save(buf_4k, format="PNG", optimize=True)
-                        st.session_state[f"ready_4k_{i}"] = buf_4k.getvalue()
-                        st.rerun()
-                
-                if f"ready_4k_{i}" in st.session_state:
-                    c2.download_button("⬇️", st.session_state[f"ready_4k_{i}"], f"4k_{i}.png", "image/png", key=f"dl4k_{i}")
+                # --- SI ES IMAGEN ---
+                else:
+                    if img:
+                        st.image(img, use_container_width=True)
+                        st.text_area("Prompt:", value=prompt_txt, height=80, disabled=True, key=f"txt_{i}", label_visibility="collapsed")
+                        
+                        c1, c2, c3 = st.columns([1, 1, 1])
+                        
+                        buf = BytesIO()
+                        img.save(buf, format="PNG")
+                        c1.download_button("💾", buf.getvalue(), f"archviz_{i}.png", "image/png", key=f"dl_{i}")
+                        
+                        if c2.button("🔍 4K", key=f"up_{i}"):
+                            with st.spinner("Reescalando..."):
+                                img_4k = upscale_image(img)
+                                buf_4k = BytesIO()
+                                img_4k.save(buf_4k, format="PNG", optimize=True)
+                                st.session_state[f"ready_4k_{i}"] = buf_4k.getvalue()
+                                st.rerun()
+                        
+                        if f"ready_4k_{i}" in st.session_state:
+                            c2.download_button("⬇️", st.session_state[f"ready_4k_{i}"], f"4k_{i}.png", "image/png", key=f"dl4k_{i}")
 
-                if c3.button("🔄 Ref", key=f"ref_{i}"):
-                    st.session_state.referencias.append({
-                        "img": img,
-                        "name": f"hist_{int(time.time())}.png"
-                    })
-                    st.toast("Añadida a Referencias", icon="✅")
-                    time.sleep(0.5)
-                    st.rerun()
+                        if c3.button("🔄 Ref", key=f"ref_{i}"):
+                            st.session_state.referencias.append({
+                                "img": img,
+                                "name": f"hist_{int(time.time())}.png"
+                            })
+                            st.toast("Añadida a Referencias", icon="✅")
+                            time.sleep(0.5)
+                            st.rerun()
