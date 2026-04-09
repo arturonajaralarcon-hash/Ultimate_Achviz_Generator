@@ -107,6 +107,16 @@ def upscale_image(image, target_width=3840):
     img_resized = image.resize((target_width, h_size), PIL.Image.Resampling.LANCZOS)
     return img_resized
 
+# NUEVA FUNCIÓN: Traductor estricto para Veo 3.1
+def pil_to_veo_image(pil_img):
+    buf = BytesIO()
+    # Aseguramos que sea RGB para guardarla como JPEG
+    pil_img.convert("RGB").save(buf, format="JPEG")
+    return types.Image(
+        image_bytes=buf.getvalue(),
+        mime_type="image/jpeg"
+    )
+
 # --- CARGADOR DE DATOS JSON ---
 @st.cache_data
 def load_json_data(folder_path="data"):
@@ -326,26 +336,22 @@ if check_password():
                     elif "veo-" in model_map[modelo_nombre]:
                         status.update(label="🎬 Iniciando generación de video (Esto puede tardar varios minutos)...", state="running")
                         
-                        # PREPARACIÓN PARA VEO 3.1
                         video_kwargs = {
                             "model": model_map[modelo_nombre],
                             "prompt": prompt_render,
                         }
                         
-                        # ¡AQUÍ ESTÁ LA MAGIA CORREGIDA! 
-                        # Si marcaste la casilla "Usar" en una foto, Veo la tomará como el Frame Inicial
+                        # ¡CORRECCIÓN AQUÍ! Pasamos la imagen por nuestro traductor pil_to_veo_image
                         if refs_activas:
-                            video_kwargs["image"] = refs_activas[0] 
+                            video_kwargs["image"] = pil_to_veo_image(refs_activas[0])
                             
-                            # Si usaste más de una, las demás se van como referencias
                             if len(refs_activas) > 1:
                                 video_kwargs["config"] = types.GenerateVideosConfig(
-                                    reference_images=refs_activas[1:]
+                                    reference_images=[pil_to_veo_image(img) for img in refs_activas[1:]]
                                 )
 
                         operation = client.models.generate_videos(**video_kwargs)
                         
-                        # Loop de espera para el video
                         while not operation.done:
                             status.update(label="Procesando video con Veo3... Por favor espera ⏳", state="running")
                             time.sleep(10)
