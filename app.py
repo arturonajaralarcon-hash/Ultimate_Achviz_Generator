@@ -107,10 +107,9 @@ def upscale_image(image, target_width=3840):
     img_resized = image.resize((target_width, h_size), PIL.Image.Resampling.LANCZOS)
     return img_resized
 
-# NUEVA FUNCIÓN: Traductor estricto para Veo 3.1
+# TRADUCTOR PARA VEO 3.1
 def pil_to_veo_image(pil_img):
     buf = BytesIO()
-    # Aseguramos que sea RGB para guardarla como JPEG
     pil_img.convert("RGB").save(buf, format="JPEG")
     return types.Image(
         image_bytes=buf.getvalue(),
@@ -307,8 +306,23 @@ if check_password():
     if final_prompt != st.session_state.prompt_final:
         st.session_state.prompt_final = final_prompt
 
-    # --- ZONA 3: GENERACIÓN DE IMAGEN / VIDEO ---
+    # --- ZONA 3: AJUSTES Y GENERACIÓN ---
     st.divider()
+    
+    st.subheader("⚙️ Ajustes de Salida (Veo 3 / Imagen 4)")
+    col_aj1, col_aj2, col_aj3 = st.columns(3)
+    with col_aj1:
+        ratio_opt = st.selectbox("Aspect Ratio", ["16:9", "9:16", "1:1", "4:3", "3:4"])
+    with col_aj2:
+        res_opt = st.selectbox("Resolución (Solo Veo 3)", ["1080p", "4k"])
+    with col_aj3:
+        veo_modo = st.selectbox("Comportamiento de Fotos (Solo Veo 3)", [
+            "Frame Inicial (Usa 1ra foto)",
+            "Inicio y Fin (Usa 1ra y 2da foto)",
+            "Referencias de Assets (Estilo/Sujeto)"
+        ])
+
+    st.write("")
     
     if st.button("🚀 Renderizar (Imagen / Video)", use_container_width=True):
         if st.session_state.prompt_final:
@@ -320,13 +334,13 @@ if check_password():
 
                     # CASO A: Imagen 3 / 4
                     if "imagen-" in model_map[modelo_nombre]:
-                        status.update(label="Generando imagen con Imagen 4.0...", state="running")
+                        status.update(label=f"Generando imagen con Imagen 4.0 ({ratio_opt})...", state="running")
                         response = client.models.generate_images(
                             model=model_map[modelo_nombre],
                             prompt=prompt_render,
                             config=types.GenerateImagesConfig(
                                 number_of_images=1,
-                                aspect_ratio="16:9" 
+                                aspect_ratio=ratio_opt 
                             )
                         )
                         if response and response.generated_images:
@@ -334,21 +348,39 @@ if check_password():
 
                     # CASO B: Video con Veo 3.1
                     elif "veo-" in model_map[modelo_nombre]:
-                        status.update(label="🎬 Iniciando generación de video (Esto puede tardar varios minutos)...", state="running")
+                        status.update(label=f"🎬 Iniciando video ({res_opt} | {ratio_opt})...", state="running")
                         
                         video_kwargs = {
                             "model": model_map[modelo_nombre],
                             "prompt": prompt_render,
                         }
+                        video_config = {"aspect_ratio": ratio_opt}
                         
-                        # ¡CORRECCIÓN AQUÍ! Pasamos la imagen por nuestro traductor pil_to_veo_image
+                        if res_opt == "4k":
+                            video_config["resolution"] = "4k"
+                        
+                        # APLICAR LÓGICA DE IMÁGENES SEGÚN EL DROPDOWN
                         if refs_activas:
-                            video_kwargs["image"] = pil_to_veo_image(refs_activas[0])
-                            
-                            if len(refs_activas) > 1:
-                                video_kwargs["config"] = types.GenerateVideosConfig(
-                                    reference_images=[pil_to_veo_image(img) for img in refs_activas[1:]]
-                                )
+                            if veo_modo == "Frame Inicial (Usa 1ra foto)":
+                                video_kwargs["image"] = pil_to_veo_image(refs_activas[0])
+                                
+                            elif veo_modo == "Inicio y Fin (Usa 1ra y 2da foto)":
+                                video_kwargs["image"] = pil_to_veo_image(refs_activas[0])
+                                if len(refs_activas) > 1:
+                                    video_config["last_frame"] = pil_to_veo_image(refs_activas[1])
+                                else:
+                                    st.warning("⚠️ Seleccionaste Inicio y Fin, pero solo marcaste 1 foto. Se usará solo como inicio.")
+                                    
+                            elif veo_modo == "Referencias de Assets (Estilo/Sujeto)":
+                                refs_list = []
+                                for r_img in refs_activas:
+                                    refs_list.append(types.VideoGenerationReferenceImage(
+                                        image=pil_to_veo_image(r_img),
+                                        reference_type="asset"
+                                    ))
+                                video_config["reference_images"] = refs_list
+
+                        video_kwargs["config"] = types.GenerateVideosConfig(**video_config)
 
                         operation = client.models.generate_videos(**video_kwargs)
                         
@@ -370,7 +402,9 @@ if check_password():
                     # CASO C: Gemini Nano Banana (Flash/Pro)
                     else:
                         status.update(label="Generando imagen con Nano Banana...", state="running")
-                        contenido_solicitud = [prompt_render] + refs_activas
+                        # Nano Banana no acepta aspect ratio estricto por API, lo pasamos en el texto
+                        prompt_modificado = f"{prompt_render} --ar {ratio_opt}"
+                        contenido_solicitud = [prompt_modificado] + refs_activas
                         response = client.models.generate_content(
                             model=model_map[modelo_nombre],
                             contents=contenido_solicitud,
