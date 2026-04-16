@@ -309,12 +309,12 @@ if check_password():
     # --- ZONA 3: AJUSTES Y GENERACIÓN ---
     st.divider()
     
-    st.subheader("⚙️ Ajustes de Salida (Veo 3 / Imagen 4)")
+    st.subheader("⚙️ Ajustes de Salida (Veo 3 / Imagen / Nano Banana)")
     col_aj1, col_aj2, col_aj3 = st.columns(3)
     with col_aj1:
         ratio_opt = st.selectbox("Aspect Ratio", ["16:9", "9:16", "1:1", "4:3", "3:4"])
     with col_aj2:
-        res_opt = st.selectbox("Resolución (Solo Veo 3)", ["1080p", "4k"])
+        res_opt = st.selectbox("Resolución (Veo 3 / Nano Banana)", ["1080p", "4K"])
     with col_aj3:
         veo_modo = st.selectbox("Comportamiento de Fotos (Solo Veo 3)", [
             "Frame Inicial (Usa 1ra foto)",
@@ -356,10 +356,10 @@ if check_password():
                         }
                         video_config = {"aspect_ratio": ratio_opt}
                         
-                        if res_opt == "4k":
+                        # Mapeo de resolución (Veo espera "4k" en minúscula generalmente, pero enviamos lo que funciona en config)
+                        if res_opt == "4K":
                             video_config["resolution"] = "4k"
                         
-                        # APLICAR LÓGICA DE IMÁGENES SEGÚN EL DROPDOWN
                         if refs_activas:
                             if veo_modo == "Frame Inicial (Usa 1ra foto)":
                                 video_kwargs["image"] = pil_to_veo_image(refs_activas[0])
@@ -402,15 +402,22 @@ if check_password():
                     # CASO C: Gemini Nano Banana (Flash/Pro)
                     else:
                         status.update(label="Generando imagen con Nano Banana...", state="running")
-                        # Nano Banana no acepta aspect ratio estricto por API, lo pasamos en el texto
-                        prompt_modificado = f"{prompt_render} --ar {ratio_opt}"
-                        contenido_solicitud = [prompt_modificado] + refs_activas
+                        
+                        # Construir ImageConfig
+                        image_cfg_kwargs = {"aspect_ratio": ratio_opt}
+                        if res_opt == "4K":
+                            image_cfg_kwargs["image_size"] = "4K"
+                            
+                        nano_config = types.GenerateContentConfig(
+                            response_modalities=["IMAGE"],
+                            image_config=types.ImageConfig(**image_cfg_kwargs)
+                        )
+
+                        contenido_solicitud = [prompt_render] + refs_activas
                         response = client.models.generate_content(
                             model=model_map[modelo_nombre],
                             contents=contenido_solicitud,
-                            config=types.GenerateContentConfig(
-                                response_modalities=["IMAGE"]
-                            )
+                            config=nano_config
                         )
                         
                         if response and response.parts:
