@@ -231,11 +231,27 @@ if check_password():
             st.rerun()
             
         cols_refs = st.columns(6) 
+        ref_options = []
+        
+        # Muestra la galería con IDs
         for i, ref in enumerate(st.session_state.referencias):
             with cols_refs[i % 6]:
                 st.image(ref["img"], use_container_width=True)
-                if st.checkbox("Usar", key=f"chk_orig_{i}"):
-                    refs_activas.append(ref["img"].convert("RGB"))
+                st.caption(f"ID: {i} - {ref['name']}")
+            ref_options.append(f"{i} - {ref['name']}")
+            
+        st.write("")
+        # Selector múltiple estricto: Guarda el orden de los clics
+        selected_refs = st.multiselect(
+            "📌 Selecciona y ORDENA las imágenes (El orden de selección determina cuál es el inicio y cuál es el fin):",
+            options=ref_options,
+            default=None
+        )
+        
+        # Extrae las imágenes en el orden exacto en que fueron elegidas
+        for sel in selected_refs:
+            idx = int(sel.split(" - ")[0])
+            refs_activas.append(st.session_state.referencias[idx]["img"].convert("RGB"))
 
     st.divider()
 
@@ -348,15 +364,18 @@ if check_password():
 
                     # CASO B: Video con Veo 3.1
                     elif "veo-" in model_map[modelo_nombre]:
-                        status.update(label=f"🎬 Iniciando video ({res_opt} | {ratio_opt})...", state="running")
+                        # Regla de seguridad: Veo 3 en 4K solo acepta 16:9 nativo. 
+                        # Forzamos 16:9 si eligió 4K para evitar un 400 INVALID_ARGUMENT
+                        veo_ratio = "16:9" if res_opt == "4K" else ratio_opt
+                        
+                        status.update(label=f"🎬 Iniciando video ({res_opt} | {veo_ratio})...", state="running")
                         
                         video_kwargs = {
                             "model": model_map[modelo_nombre],
                             "prompt": prompt_render,
                         }
-                        video_config = {"aspect_ratio": ratio_opt}
+                        video_config = {"aspect_ratio": veo_ratio}
                         
-                        # Mapeo de resolución (Veo espera "4k" en minúscula generalmente, pero enviamos lo que funciona en config)
                         if res_opt == "4K":
                             video_config["resolution"] = "4k"
                         
@@ -403,7 +422,6 @@ if check_password():
                     else:
                         status.update(label="Generando imagen con Nano Banana...", state="running")
                         
-                        # Construir ImageConfig
                         image_cfg_kwargs = {"aspect_ratio": ratio_opt}
                         if res_opt == "4K":
                             image_cfg_kwargs["image_size"] = "4K"
